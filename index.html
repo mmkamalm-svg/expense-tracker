@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>আয়-ব্যয়ের হিসাব খাতা (লগইন সিস্টেম)</title>
+    <!-- Firebase SDK (Compat Version) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #eef2f5; margin: 15px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #2c3e50; margin-bottom: 20px; }
+        
+        /* লগইন পেজ স্টাইল */
+        #auth-container { max-width: 400px; margin: 50px auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; }
+        #auth-container input { width: 100%; margin-bottom: 12px; box-sizing: border-box; }
+        .auth-toggle { color: #2980b9; cursor: pointer; font-size: 13px; margin-top: 10px; display: inline-block; }
+
+        .top-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; background: #e9ecef; padding: 10px; border-radius: 8px; }
+        .logout-btn { background-color: #c0392b; font-size: 12px; padding: 6px 12px; }
+        .logout-btn:hover { background-color: #962d22; }
+
+        .summary { display: flex; gap: 10px; margin-bottom: 20px; text-align: center; }
+        .summary div { flex: 1; padding: 15px; border-radius: 8px; color: white; }
+        .balance { background-color: gold; color: #333 !important; }
+        .income { background: #2ecc71; }
+        .expense { background: #e74c3c; }
+        .summary h4 { margin: 0 0 5px 0; font-size: 14px; opacity: 0.9; }
+        .summary p { margin: 0; font-size: 18px; font-weight: bold; }
+
+        form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 25px; background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #e9ecef; }
+        .form-row { display: flex; gap: 10px; }
+        .form-row > * { flex: 1; }
+        
+        input, select, button { padding: 10px; font-size: 14px; border: 1px solid #ced4da; border-radius: 5px; outline: none; }
+        button { background-color: #2c3e50; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #1a252f; }
+
+        .history-grid { display: flex; gap: 15px; }
+        .history-box { flex: 1; background: #fafafa; border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; }
+        .history-box h3 { margin-top: 0; font-size: 16px; padding-bottom: 8px; border-bottom: 2px solid #ddd; text-align: center; }
+        .income-title { color: #27ae60; border-bottom-color: #27ae60 !important; }
+        .expense-title { color: #c0392b; border-bottom-color: #c0392b !important; }
+
+        ul { list-style-type: none; padding: 0; margin: 0; max-height: 350px; overflow-y: auto; }
+        li { background-color: #fff; border: 1px solid #e9ecef; padding: 10px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-radius: 5px; }
+        
+        .details { display: flex; flex-direction: column; }
+        .details .title { font-weight: bold; color: #333; font-size: 14px; }
+        .details .sub-info { font-size: 11px; color: #7f8c8d; margin-top: 2px; }
+        .amount { font-weight: bold; font-size: 14px; }
+        .amount.plus { color: #2ecc71; }
+        .amount.minus { color: #e74c3c; }
+        .delete-btn { background: transparent; border: none; color: #a00; font-weight: bold; cursor: pointer; font-size: 14px; margin-left: 8px; }
+
+        @media (max-width: 600px) {
+            .history-grid { flex-direction: column; }
+            .form-row { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- লগইন / সাইনআপ পেজ -->
+    <div id="auth-container">
+        <h2 id="auth-title">লগইন করুন</h2>
+        <input type="email" id="auth-email" placeholder="আপনার ইমেইল" required>
+        <input type="password" id="auth-password" placeholder="পাসওয়ার্ড (কমপক্ষে ৬ ডিজিট)" required>
+        <button id="auth-btn" onclick="handleAuth()" style="width: 100%;">লগইন</button>
+        <span class="auth-toggle" id="auth-toggle-btn" onclick="toggleAuthMode()">একাউন্ট নেই? নতুন রেজিস্টার করুন</span>
+    </div>
+
+    <!-- মূল হিসাব খাতা ড্যাশবোর্ড -->
+    <div class="container" id="app-container" style="display: none;">
+        <div class="top-header">
+            <div>
+                <span style="font-size: 13px; color: #495057; font-weight: bold;">লগইন করা আছে: </span>
+                <span id="user-email-display" style="font-size: 13px; color: #2980b9; font-weight: bold;"></span>
+            </div>
+            <button type="button" class="logout-btn" onclick="logoutUser()">লগআউট</button>
+        </div>
+
+        <h2>আয়-ব্যয়ের ড্যাশবোর্ড</h2>
+
+        <!-- মাস এবং নির্দিষ্ট তারিখ অনুযায়ী ফিল্টার -->
+        <div style="margin-bottom: 15px; text-align: right; display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap;">
+            <div>
+                <label for="month-filter" style="font-weight: bold; font-size: 13px;">মাস:</label>
+                <input type="month" id="month-filter" onchange="applyFilter('month')" style="padding: 5px; font-size: 13px; border: 1px solid #ced4da; border-radius: 5px;">
+            </div>
+            <div>
+                <label for="date-filter" style="font-weight: bold; font-size: 13px;">তারিখ:</label>
+                <input type="date" id="date-filter" onchange="applyFilter('date')" style="padding: 5px; font-size: 13px; border: 1px solid #ced4da; border-radius: 5px;">
+            </div>
+            <button type="button" onclick="clearFilter()" style="padding: 6px 10px; font-size: 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">সব দেখুন</button>
+        </div>
+
+        <div class="summary">
+            <div class="income">
+                <h4>মোট আয়</h4>
+                <p>৳<span id="total-income">0</span></p>
+            </div>
+            <div class="expense">
+                <h4>মোট ব্যয়</h4>
+                <p>৳<span id="total-expense">0</span></p>
+            </div>
+            <div class="balance">
+                <h4>অবশিষ্ট</h4>
+                <p>৳<span id="net-balance">0</span></p>
+            </div>
+        </div>
+
+        <form id="tracker-form">
+            <div class="form-row">
+                <select id="type" onchange="updateCategories()">
+                    <option value="income">আয় (+)</option>
+                    <option value="expense">ব্যয় (-)</option>
+                </select>
+                <select id="category" required></select>
+            </div>
+
+            <div class="form-row">
+                <input type="text" id="description" placeholder="বিবরণ / নোট (ঐচ্ছিক)">
+                <input type="number" id="amount" placeholder="টাকার পরিমাণ" required>
+            </div>
+
+            <input type="date" id="date" required>
+
+            <button type="submit">হিসাব সংরক্ষণ করুন</button>
+        </form>
+
+        <div class="history-grid">
+            <div class="history-box">
+                <h3 class="income-title">আয়ের হিসাব</h3>
+                <ul id="income-list"></ul>
+            </div>
+
+            <div class="history-box">
+                <h3 class="expense-title">ব্যয়ের হিসাব</h3>
+                <ul id="expense-list"></ul>
+            </div>
+        </div>
+    </div>
+
+<script>
+    // ==========================================
+    // ফায়ারবেস কনফিগারেশন (আপনার প্রজেক্টের তথ্য যুক্ত করা হলো)
+    // ==========================================
+    const firebaseConfig = {
+        apiKey: "AIzaSyDVRu9IcA49Qx2fQ38NXMbAgPQXwwOR5As",
+        authDomain: "expense-tracker-9912a.firebaseapp.com",
+        projectId: "expense-tracker-9912a",
+        storageBucket: "expense-tracker-9912a.firebasestorage.app",
+        messagingSenderId: "322702310555",
+        appId: "1:322702310555:web:64a71a966f854c92279a3e",
+        measurementId: "G-T70F4H9WWX"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    let currentUser = null;
+    let transactions = [];
+    let isSignupMode = false;
+
+    const incomeCategories = ["Salary", "Overtime bill", "SL/CL Leave Bill", "EL Leavee Bill", "Production Bonous", "Eid-Ul-Fitor Bonous", "Eid-Ul-Azha Bonous", "Loan", "BFCL-Union", "PET Bottle-Union"];
+    const expenseCategories = ["Mess Bill", "Abbajan(home)", "Food-Bazar", "BFCL-Union", "PET Bottle-Union", "Medicine", "Resturent", "Transport", "Medical", "Internet-Bill", "Loan-Paid", "অন্যান্য খরচ"];
+
+    const form = document.getElementById('tracker-form');
+    const typeInput = document.getElementById('type');
+    const categoryInput = document.getElementById('category');
+    const descriptionInput = document.getElementById('description');
+    const amountInput = document.getElementById('amount');
+    const dateInput = document.getElementById('date');
+
+    const incomeList = document.getElementById('income-list');
+    const expenseList = document.getElementById('expense-list');
+    const incomeDisplay = document.getElementById('total-income');
+    const expenseDisplay = document.getElementById('total-expense');
+    const balanceDisplay = document.getElementById('net-balance');
+
+    dateInput.valueAsDate = new Date();
+
+    function toggleAuthMode() {
+        isSignupMode = !isSignupMode;
+        document.getElementById('auth-title').textContent = isSignupMode ? "রেজিস্টার করুন" : "লগইন করুন";
+        document.getElementById('auth-btn').textContent = isSignupMode ? "রেজিস্টার" : "লগইন";
+        document.getElementById('auth-toggle-btn').textContent = isSignupMode ? "আগে থেকেই একাউন্ট আছে? লগইন করুন" : "একাউন্ট নেই? নতুন রেজিস্টার করুন";
+    }
+
+    function handleAuth() {
+        const email = document.getElementById('auth-email').value;
+        const password = document.getElementById('auth-password').value;
+
+        if (!email || !password) {
+            alert("দয়া করে ইমেইল ও পাসওয়ার্ড দিন।");
+            return;
+        }
+
+        if (isSignupMode) {
+            auth.createUserWithEmailAndPassword(email, password)
+                .then(() => alert("সফলভাবে একাউন্ট তৈরি হয়েছে!"))
+                .catch(error => alert("ত্রুটি: " + error.message));
+        } else {
+            auth.signInWithEmailAndPassword(email, password)
+                .catch(error => alert("লগইন ব্যর্থ: " + error.message));
+        }
+    }
+
+    function logoutUser() {
+        auth.signOut().then(() => {
+            document.getElementById('app-container').style.display = 'none';
+            document.getElementById('auth-container').style.display = 'block';
+        });
+    }
+
+    auth.onAuthStateChanged(user => {
+        if (user) {
+            currentUser = user;
+            document.getElementById('auth-container').style.display = 'none';
+            document.getElementById('app-container').style.display = 'block';
+            document.getElementById('user-email-display').textContent = user.email;
+            loadTransactionsFromCloud();
+        } else {
+            currentUser = null;
+            document.getElementById('app-container').style.display = 'none';
+            document.getElementById('auth-container').style.display = 'block';
+        }
+    });
+
+    function loadTransactionsFromCloud() {
+        db.collection("users").doc(currentUser.uid).collection("transactions")
+            .orderBy("date", "desc")
+            .get()
+            .then(querySnapshot => {
+                transactions = [];
+                querySnapshot.forEach(doc => {
+                    transactions.push({ id: doc.id, ...doc.data() });
+                });
+                updateCategories();
+                updateUI();
+            })
+            .catch(error => console.log("ডাটা লোড করতে সমস্যা: ", error));
+    }
+
+    function updateCategories() {
+        const type = typeInput.value;
+        const categories = type === 'income' ? incomeCategories : expenseCategories;
+        
+        categoryInput.innerHTML = '';
+        categories.forEach(cat => {
+            const option = document.createElement('option');
+            option.value = cat;
+            option.textContent = cat;
+            categoryInput.appendChild(option);
+        });
+    }
+
+    function applyFilter(type) {
+        if (type === 'month') {
+            document.getElementById('date-filter').value = ''; 
+        } else if (type === 'date') {
+            document.getElementById('month-filter').value = ''; 
+        }
+        updateUI();
+    }
+
+    function updateUI() {
+        incomeList.innerHTML = '';
+        expenseList.innerHTML = '';
+
+        let totalIncome = 0;
+        let totalExpense = 0;
+        const selectedMonth = document.getElementById('month-filter').value;
+        const selectedDate = document.getElementById('date-filter').value;
+
+        transactions.forEach((item, index) => {
+            if (selectedMonth && !item.date.startsWith(selectedMonth)) {
+                return;
+            }
+            if (selectedDate && item.date !== selectedDate) {
+                return;
+            }
+
+            const li = document.createElement('li');
+            const descText = item.desc ? ` (${item.desc})` : '';
+
+            li.innerHTML = `
+                <div class="details">
+                    <span class="title">${item.category}${descText}</span>
+                    <span class="sub-info">তারিখ: ${item.date}</span>
+                </div>
+                <div>
+                    <span class="amount ${item.type === 'income' ? 'plus' : 'minus'}">
+                        ${item.type === 'income' ? '+' : '-'}৳${item.amount}
+                    </span>
+                    <button class="delete-btn" onclick="deleteTransaction('${item.id}', ${index})">✕</button>
+                </div>
+            `;
+
+            const itemAmount = Number(item.amount) || 0;
+
+            if (item.type === 'income') {
+                totalIncome += itemAmount;
+                incomeList.appendChild(li);
+            } else {
+                totalExpense += itemAmount;
+                expenseList.appendChild(li);
+            }
+        });
+
+        incomeDisplay.textContent = totalIncome;
+        expenseDisplay.textContent = totalExpense;
+        balanceDisplay.textContent = totalIncome - totalExpense;
+    }
+
+    function clearFilter() {
+        document.getElementById('month-filter').value = '';
+        document.getElementById('date-filter').value = '';
+        updateUI();
+    }
+
+    function deleteTransaction(docId, index) {
+        if (!docId) return;
+        db.collection("users").doc(currentUser.uid).collection("transactions").doc(docId).delete()
+            .then(() => {
+                transactions.splice(index, 1);
+                updateUI();
+            })
+            .catch(error => alert("ডিলিট করতে সমস্যা হয়েছে: " + error.message));
+    }
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const newTransaction = {
+            type: typeInput.value,
+            category: categoryInput.value,
+            desc: descriptionInput.value,
+            amount: parseFloat(amountInput.value),
+            date: dateInput.value,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        db.collection("users").doc(currentUser.uid).collection("transactions").add(newTransaction)
+            .then(docRef => {
+                newTransaction.id = docRef.id;
+                transactions.unshift(newTransaction);
+                updateUI();
+
+                descriptionInput.value = '';
+                amountInput.value = '';
+                dateInput.valueAsDate = new Date();
+            })
+            .catch(error => alert("সংরক্ষণ করতে সমস্যা হয়েছে: " + error.message));
+    });
+</script>
+
+</body>
+</html>
