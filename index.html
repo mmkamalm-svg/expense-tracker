@@ -68,7 +68,7 @@
     <div id="auth-container">
         <h2 id="auth-title">লগইন করুন</h2>
         <input type="email" id="auth-email" placeholder="আপনার ইমেইল" required>
-        <input type="password" id="auth-password" placeholder="পাসওয়ার্ড (কমপক্ষে ৬ ডিজিট)" required>
+        <input type="password" id="auth-password" placeholder="পাসওয়ার্ড (কমপক্ষে ৬ ডিজিট)" required>
         <button id="auth-btn" onclick="handleAuth()" style="width: 100%;">লগইন</button>
         <span class="auth-toggle" id="auth-toggle-btn" onclick="toggleAuthMode()">একাউন্ট নেই? নতুন রেজিস্টার করুন</span>
     </div>
@@ -124,7 +124,7 @@
 
             <div class="form-row">
                 <input type="text" id="description" placeholder="বিবরণ / নোট (ঐচ্ছিক)">
-                <input type="number" id="amount" placeholder="টাকার পরিমাণ" required>
+                <input type="number" step="any" id="amount" placeholder="টাকার পরিমাণ" required>
             </div>
 
             <input type="date" id="date" required>
@@ -147,7 +147,7 @@
 
 <script>
     // ==========================================
-    // ফায়ারবেস কনফিগারেশন (আপনার প্রজেক্টের তথ্য যুক্ত করা হলো)
+    // ফায়ারবেস কনফিগারেশন
     // ==========================================
     const firebaseConfig = {
         apiKey: "AIzaSyDVRu9IcA49Qx2fQ38NXMbAgPQXwwOR5As",
@@ -167,7 +167,7 @@
     let transactions = [];
     let isSignupMode = false;
 
-    const incomeCategories = ["Salary", "Overtime bill", "SL/CL Leave Bill", "EL Leavee Bill", "Production Bonous", "Eid-Ul-Fitor Bonous", "Eid-Ul-Azha Bonous", "Loan","Loan Return", "BFCL-Union", "PET Bottle-Union"];
+    const incomeCategories = ["Salary", "Overtime bill", "SL/CL Leave Bill", "EL Leave Bill", "Production Bonous", "Eid-Ul-Fitor Bonous", "Eid-Ul-Azha Bonous", "Loan","Loan Return", "BFCL-Union", "PET Bottle-Union"];
     const expenseCategories = ["Mess Bill", "Abbajan(home)", "Food-Bazar","Fruits","Cosmatics", "BFCL-Union", "PET Bottle-Union", "Medicine", "Resturent", "Transport", "Medical", "Internet-Bill", "Loan-Paid", "অন্যান্য খরচ"];
 
     const form = document.getElementById('tracker-form');
@@ -197,13 +197,13 @@
         const password = document.getElementById('auth-password').value;
 
         if (!email || !password) {
-            alert("দয়া করে ইমেইল ও পাসওয়ার্ড দিন।");
+            alert("দয়া করে ইমেইল ও পাসওয়ার্ড দিন।");
             return;
         }
 
         if (isSignupMode) {
             auth.createUserWithEmailAndPassword(email, password)
-                .then(() => alert("সফলভাবে একাউন্ট তৈরি হয়েছে!"))
+                .then(() => alert("সফলভাবে একাউন্ট তৈরি হয়েছে!"))
                 .catch(error => alert("ত্রুটি: " + error.message));
         } else {
             auth.signInWithEmailAndPassword(email, password)
@@ -224,6 +224,9 @@
             document.getElementById('auth-container').style.display = 'none';
             document.getElementById('app-container').style.display = 'block';
             document.getElementById('user-email-display').textContent = user.email;
+            
+            // লগইন হলেই ফিল্টার ফাকা করে সব ডাটা লোড নিশ্চিত করা
+            clearFilter();
             loadTransactionsFromCloud();
         } else {
             currentUser = null;
@@ -233,14 +236,18 @@
     });
 
     function loadTransactionsFromCloud() {
+        // রিয়েল-টাইম ডাটাবেস লিসেনার (তাৎক্ষণিক আপডেট ও মিসিং ডাটা প্রতিরোধের জন্য)
         db.collection("users").doc(currentUser.uid).collection("transactions")
-            .orderBy("date", "desc")
             .get()
             .then(querySnapshot => {
                 transactions = [];
                 querySnapshot.forEach(doc => {
                     transactions.push({ id: doc.id, ...doc.data() });
                 });
+                
+                // জাভাস্ক্রিপ্ট দিয়েই সঠিকভাবে ডেট অনুযায়ী সর্টিং
+                transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+                
                 updateCategories();
                 updateUI();
             })
@@ -278,7 +285,7 @@
         const selectedMonth = document.getElementById('month-filter').value;
         const selectedDate = document.getElementById('date-filter').value;
 
-        transactions.forEach((item, index) => {
+        transactions.forEach((item) => {
             if (selectedMonth && !item.date.startsWith(selectedMonth)) {
                 return;
             }
@@ -298,7 +305,7 @@
                     <span class="amount ${item.type === 'income' ? 'plus' : 'minus'}">
                         ${item.type === 'income' ? '+' : '-'}৳${item.amount}
                     </span>
-                    <button class="delete-btn" onclick="deleteTransaction('${item.id}', ${index})">✕</button>
+                    <button class="delete-btn" onclick="deleteTransaction('${item.id}')">✕</button>
                 </div>
             `;
 
@@ -313,9 +320,9 @@
             }
         });
 
-        incomeDisplay.textContent = totalIncome;
-        expenseDisplay.textContent = totalExpense;
-        balanceDisplay.textContent = totalIncome - totalExpense;
+        incomeDisplay.textContent = totalIncome.toLocaleString();
+        expenseDisplay.textContent = totalExpense.toLocaleString();
+        balanceDisplay.textContent = (totalIncome - totalExpense).toLocaleString();
     }
 
     function clearFilter() {
@@ -324,14 +331,18 @@
         updateUI();
     }
 
-    function deleteTransaction(docId, index) {
+    // নির্ভুল ডিলিট ফাংশন (আইডি ধরে নিরাপদ অপসারণ)
+    function deleteTransaction(docId) {
         if (!docId) return;
+        if (!confirm("আপনি কি নিশ্চিতভাবে এই হিসাবটি ডিলিট করতে চান?")) return;
+
         db.collection("users").doc(currentUser.uid).collection("transactions").doc(docId).delete()
             .then(() => {
-                transactions.splice(index, 1);
+                // অ্যারে থেকে আইডি অনুযায়ী নিরাপদ ফিল্টারিং
+                transactions = transactions.filter(item => item.id !== docId);
                 updateUI();
             })
-            .catch(error => alert("ডিলিট করতে সমস্যা হয়েছে: " + error.message));
+            .catch(error => alert("ডিলিট করতে সমস্যা হয়েছে: " + error.message));
     }
 
     form.addEventListener('submit', function(e) {
@@ -350,13 +361,16 @@
             .then(docRef => {
                 newTransaction.id = docRef.id;
                 transactions.unshift(newTransaction);
+                
+                // নতুন ডাটা যোগ হওয়ার পর পুনরায় সঠিক সর্ট করা
+                transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
                 updateUI();
 
                 descriptionInput.value = '';
                 amountInput.value = '';
                 dateInput.valueAsDate = new Date();
             })
-            .catch(error => alert("সংরক্ষণ করতে সমস্যা হয়েছে: " + error.message));
+            .catch(error => alert("সংরক্ষণ করতে সমস্যা হয়েছে: " + error.message));
     });
 </script>
 
